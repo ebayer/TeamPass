@@ -27,9 +27,19 @@ if (!isset($_SESSION['settings']['cpassman_dir']) || $_SESSION['settings']['cpas
 
 IdentifyUser($_POST['data']);
 
+function generate_GUID()
+{
+    if (function_exists('com_create_guid') === true)
+    {
+        return trim(com_create_guid(), '{}');
+    }
+
+    return sprintf('%04X%04X-%04X-%04X-%04X-%04X%04X%04X', mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(16384, 20479), mt_rand(32768, 49151), mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(0, 65535));
+}
+
 function IdentifyUser($sentData)
 {
-    global $k;
+    global $k, $debugLdap;
     include $_SESSION['settings']['cpassman_dir'].'/includes/settings.php';
     header("Content-type: text/html; charset=utf-8");
     error_reporting(E_ERROR);
@@ -177,7 +187,7 @@ function IdentifyUser($sentData)
         )
     );
     $counter = DB::count();
-    if ($counter == 0) {
+    if ($counter == 0 && $ldapConnection == false) {
         echo '[{"value" : "error", "text":"user_not_exists"}]';
         exit;
     }
@@ -216,7 +226,7 @@ function IdentifyUser($sentData)
             $pre.'users',
             array(
                 'login' => $username,
-                'pw' => $password,
+                'pw' => generate_GUID(),  // randomly generate a password as we dont want user to be able to log in outside of LDAP
                 'email' => "",
                 'admin' => '0',
                 'gestionnaire' => '0',
@@ -245,6 +255,11 @@ function IdentifyUser($sentData)
         // Get info for user
         //$sql = "SELECT * FROM ".$pre."users WHERE login = '".addslashes($username)."'";
         //$row = $db->query($sql);
+        $data = DB::queryFirstRow("SELECT * FROM ".$pre."users WHERE login=%s_login",
+            array(
+                'login' => $username
+            )
+        );
         $proceedIdentification = true;
     }
 
@@ -345,7 +360,7 @@ function IdentifyUser($sentData)
             $_SESSION['user_language'] = $data['user_language'];
             $_SESSION['user_email'] = $data['email'];
             $_SESSION['user']['ga'] = $data['ga'];
-            
+
             // manage session expiration
             $serverTime = time();
             if ($dataReceived['TimezoneOffset'] > 0) {
